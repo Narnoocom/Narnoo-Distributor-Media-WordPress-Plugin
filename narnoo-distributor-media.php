@@ -87,6 +87,9 @@ class Narnoo_Distributor_Media {
 			//add_action( 'wp_ajax_narnoo_distributor_api_request', 				array( 'Narnoo_Distributor_Helper', 'ajax_api_request' ) );
 			//add_action( 'wp_ajax_narnoo_add_image_to_wordpress_media_library', 	array( 'Narnoo_Distributor_Helper', 'ajax_add_image_to_wordpress_media_library' ) );
 
+			//Meta Boxes - Operators
+			add_action('add_meta_boxes', 	array( &$this, 'add_noo_op_album_meta_box'));
+			add_action( 'save_post', 		array( &$this, 'save_noo_op_album_meta_box'));
 			
 		} else {
 
@@ -259,7 +262,124 @@ class Narnoo_Distributor_Media {
 		<?php
 	}
 
+/*************************************************************************
+					OPERATOR PAGES META BOXES
+	/*************************************************************************/
+	/*
+	*
+	*	title: Narnoo add narnoo album to a page
+	*	date created: 15-09-16
+	*/
+	function add_noo_op_album_meta_box( )
+	{
 
+
+
+        add_meta_box(
+            'noo-album-box-class',      		// Unique ID
+		    'Select Narnoo Album', 		 		    // Title
+		    array( &$this,'box_display_op_album_information'),    // Callback function
+		    array('narnoo_attraction','narnoo_accommodation','narnoo_service','narnoo_dining'),         					// Admin page (or post type)
+		    'side',         					// Context
+		    'low'         					// Priority
+         );
+
+	}
+
+	/*
+	*
+	*	title: Display the album select box
+	*	date created: 15-09-16
+	*/
+	function box_display_op_album_information( $post )
+	{
+
+	global $post;
+
+    //First check that this is a Narnoo imported product
+    $dataSource = get_post_meta($post->ID,'data_source',true);
+    if( empty($dataSource) || $dataSource != 'narnoo'){
+    	return  _e( 'This product has not been imported via Narnoo.com',  NARNOO_DISTRIBUTOR_I18N_DOMAIN);
+    }
+
+    $operatorId = get_post_meta($post->ID,'operator_id',true);
+    if( empty($operatorId) ){
+    	return _e( 'There is no Narnoo ID associated with this product',  NARNOO_DISTRIBUTOR_I18N_DOMAIN);
+    }
+
+    //$values = get_post_custom( $post->ID );
+    $selected = get_post_meta($post->ID,'noo_op_album_select_id',true);
+
+	// We'll use this nonce field later on when saving.
+    wp_nonce_field( 'op_album_meta_box_nonce', 'box_display_op_album_information_nonce' );
+
+		$current_page 		      = 1;
+		//$cache	 				  = Narnoo_Distributor_Helper::init_noo_cache();
+		$request 				  = Narnoo_Distributor_Helper::init_api( 'operator' );
+
+		//Get Narnoo Ablums.....
+		if ( ! is_null( $request ) ) {
+
+			//$list = $cache->get('albums_'.$current_page);
+
+			if( empty($list) ){
+
+					try {
+
+						$list = $request->getAlbums( $operatorId,$current_page );
+						if ( ! is_array( $list->operator_albums ) ) {
+							throw new Exception( sprintf( __( "Error retrieving albums. Unexpected format in response page #%d.", NARNOO_DISTRIBUTOR_I18N_DOMAIN ), $current_page ) );
+						}
+
+						if(!empty( $list->success ) ){
+								//$cache->set('albums_'.$current_page, $list, 43200);
+						}
+
+					} catch ( Exception $ex ) {
+						//Narnoo_Distributor_Helper::show_api_error( $ex ); don't need to show anything
+					}
+
+			}
+
+			//Check the total pages and run through each so we can build a bigger list of albums
+
+		}
+
+
+    ?> <p>
+        <label for="my_meta_box_select">Narnoo Album:</label>
+        <select name="noo_op_album_select" id="noo_op_album_select">
+        	<option value="">None</option>
+            <?php foreach ($list->operator_albums as $album) { ?>
+            		<option value="<?php echo $album->album_id; ?>" <?php selected( $selected, $album->album_id ); ?>><?php echo ucwords( $album->album_name ); ?></option>
+            <?php } ?>
+        </select>
+        <p><small><em>Select an album and this will be displayed the page.</em></small></p>
+    </p>
+  	<?php
+
+	}
+
+	function save_noo_op_album_meta_box( $post_id ){
+
+		// Bail if we're doing an auto save
+	    if( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) return;
+
+	    // if our nonce isn't there, or we can't verify it, bail
+	    if( !isset( $_POST['box_display_op_album_information_nonce'] ) || !wp_verify_nonce( $_POST['box_display_op_album_information_nonce'], 'op_album_meta_box_nonce' ) ) return;
+
+	    // if our current user can't edit this post, bail
+	    if( !current_user_can( 'edit_post' ) ) return;
+
+	    if( isset( $_POST['noo_op_album_select'] ) ){
+        	update_post_meta( $post_id, 'noo_op_album_select_id', esc_attr( $_POST['noo_op_album_select'] ) );
+    	}
+
+	}
+
+	/*************************************************************************
+					OPERATOR PAGES META BOXES [end]
+	/*************************************************************************/
 
 
 
